@@ -1,0 +1,136 @@
+rules_version = '2';
+
+// ═══════════════════════════════════════════════════════════════════
+//  REGLAS DE SEGURIDAD · PlastiSolutions (Cloud Firestore)
+//
+//  ¿Quién puede acceder a los datos?
+//    Solo usuarios autenticados con Firebase Authentication, y
+//    únicamente a SUS documentos: cada documento guarda el campo `uid`
+//    de su dueño y las reglas lo comparan con request.auth.uid.
+//
+//  ¿Qué pasa si el usuario NO está autenticado?
+//    request.auth es null y toda lectura o escritura se rechaza
+//    (permission-denied).
+//
+//  ¿Qué puede consultar o modificar un usuario autenticado?
+//    Solo lo suyo. No puede leer, editar ni borrar documentos de otro
+//    usuario, ni cambiar el `uid` de un documento. Además los datos se
+//    validan (tipos, rangos, stock nunca negativo).
+//
+//  ¿Cómo se evita el acceso no autorizado?
+//    Las reglas se evalúan en los servidores de Google, no en la app:
+//    aunque alguien modifique el cliente o use otro cliente, igual se
+//    rechaza. Todo lo que no está permitido aquí queda denegado.
+//
+//  Mecanismo del servicio:
+//    Firebase Authentication entrega un token firmado al iniciar sesión;
+//    Firestore lo verifica en cada petición y expone el usuario como
+//    request.auth.
+//
+//  Cómo publicarlas:
+//    Consola de Firebase → Firestore Database → pestaña "Reglas" →
+//    pegar este contenido → "Publicar".
+//    (o con Firebase CLI: firebase deploy --only firestore:rules)
+// ═══════════════════════════════════════════════════════════════════
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ───────── Funciones auxiliares ─────────
+
+    function autenticado() {
+      return request.auth != null;
+    }
+
+    // El documento que ya existe pertenece al usuario.
+    function esDueno() {
+      return autenticado() && resource.data.uid == request.auth.uid;
+    }
+
+    // El documento que se va a guardar queda a nombre del usuario.
+    function seraDueno() {
+      return autenticado() && request.resource.data.uid == request.auth.uid;
+    }
+
+    // Nadie puede cambiar el dueño de un documento.
+    function uidIntacto() {
+      return request.resource.data.uid == resource.data.uid;
+    }
+
+    function texto(valor, max) {
+      return valor is string && valor.size() > 0 && valor.size() <= max;
+    }
+
+    function textoOpcional(valor, max) {
+      return valor == null || (valor is string && valor.size() <= max);
+    }
+
+    // ───────── Validación de datos ─────────
+
+    function proveedorValido() {
+      let d = request.resource.data;
+      return texto(d.nombre, 120)
+          && textoOpcional(d.get('telefono', null), 40)
+          && textoOpcional(d.get('correo', null), 120);
+    }
+
+    function productoValido() {
+      let d = request.resource.data;
+      return texto(d.nombre, 120)
+          && d.precio is number && d.precio > 0
+          && d.stock is int && d.stock >= 0
+          && d.proveedorId is string
+          && d.proveedorNombre is string;
+    }
+
+    function movimientoValido() {
+      let d = request.resource.data;
+      return d.tipo in ['entrada', 'salida']
+          && d.cantidad is int && d.cantidad > 0
+          && d.stockResultante is int && d.stockResultante >= 0
+          && d.productoId is string
+          && d.productoNombre is string
+          && textoOpcional(d.get('nota', null), 200)
+          && d.fecha == request.time;
+    }
+
+    // ───────── Colecciones ─────────
+    //
+    // `get` también permite leer un documento que ya no existe
+    // (resource == null) para que la app pueda detectar que fue eliminado;
+    // `list` (consultas) exige ser el dueño.
+
+    match /proveedores/{id} {
+      allow get: if autenticado()
+                 && (resource == null || resource.data.uid == request.auth.uid);
+      allow list: if esDueno();
+      allow create: if seraDueno() && proveedorValido();
+      allow update: if esDueno() && uidIntacto() && proveedorValido();
+      allow delete: if esDueno();
+    }
+
+    match /productos/{id} {
+      allow get: if autenticado()
+                 && (resource == null || resource.data.uid == request.auth.uid);
+      allow list: if esDueno();
+      allow create: if seraDueno() && productoValido();
+      allow update: if esDueno() && uidIntacto() && productoValido();
+      allow delete: if esDueno();
+    }
+
+    // Bitácora de entradas y salidas: se puede crear y leer,
+    // pero nunca editar ni borrar.
+    match /movimientos/{id} {
+      allow get: if autenticado()
+                 && (resource == null || resource.data.uid == request.auth.uid);
+      allow list: if esDueno();
+      allow create: if seraDueno() && movimientoValido();
+      allow update, delete: if false;
+    }
+
+    // Cualquier otra ruta: denegada.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
