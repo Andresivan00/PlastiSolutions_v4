@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "186624086160",
+    "project_id": "plastisolutions-3b9d9",
+    "storage_bucket": "plastisolutions-3b9d9.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:186624086160:android:9911ece8b2b05d73138815",
+        "android_client_info": {
+          "package_name": "com.plastisolutions.inventario_app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyA9pSegU5UAkB5821ng5GUcu3vyQ4cel_8"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
